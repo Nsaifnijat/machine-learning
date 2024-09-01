@@ -1,0 +1,243 @@
+
+
+The steps to building and using a model are:
+
+Define: What type of model will it be? A decision tree? Some other type of model? Some other parameters of the model type are specified too.
+Fit: Capture patterns from provided data. This is the heart of modeling.
+Predict: Just what it sounds like
+Evaluate: Determine how accurate the model's predictions are.
+
+#################################################################################
+
+MAE is used to see how accurate we are, it sees accuracy
+
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error
+
+# Function for comparing different approaches
+def score_dataset(X_train, X_valid, y_train, y_valid):
+    model = RandomForestRegressor(n_estimators=10, random_state=0)
+    model.fit(X_train, y_train)
+    preds = model.predict(X_valid)
+    return mean_absolute_error(y_valid, preds)
+
+
+ther is the following ways to deal with missing value.
+
+# Get names of columns with missing values
+cols_with_missing = [col for col in X_train.columns
+                     if X_train[col].isnull().any()]
+
+# Drop columns in training and validation data
+reduced_X_train = X_train.drop(cols_with_missing, axis=1)
+reduced_X_valid = X_valid.drop(cols_with_missing, axis=1)
+
+print("MAE from Approach 1 (Drop columns with missing values):")
+print(score_dataset(reduced_X_train, reduced_X_valid, y_train, y_valid))
+
+we use SimpleImputer to replace missing values with the mean value along each column.
+
+Although it's simple, filling in the mean value generally performs quite well (but this varies by dataset). While statisticians have experimented with more complex ways to determine imputed values (such as regression imputation, for instance), the complex strategies typically give no additional benefit once you plug the results into sophisticated machine learning models.
+
+from sklearn.impute import SimpleImputer
+
+# Imputation
+
+my_imputer = SimpleImputer()
+imputed_X_train = pd.DataFrame(my_imputer.fit_transform(X_train))
+imputed_X_valid = pd.DataFrame(my_imputer.transform(X_valid))
+
+# Imputation removed column names; put them back
+
+imputed_X_train.columns = X_train.columns
+imputed_X_valid.columns = X_valid.columns
+
+print("MAE from Approach 2 (Imputation):")
+print(score_dataset(imputed_X_train, imputed_X_valid, y_train, y_valid))
+
+
+second approach is better for machine
+
+###################################################################################################
+
+In this tutorial, you will learn what a categorical variable is, along with three approaches for handling this type of data.
+
+Introduction
+A categorical variable takes only a limited number of values.
+
+Consider a survey that asks how often you eat breakfast and provides four options: "Never", "Rarely", "Most days", or 
+"Every day". In this case, the data is categorical, because responses fall into a fixed set of categories.
+If people responded to a survey about which what brand of car they owned, the responses would fall into categories like 
+"Honda", "Toyota", and "Ford". In this case, the data is also categorical.
+
+
+Three Approaches to deal with categorical data
+1) Drop Categorical Variables
+The easiest approach to dealing with categorical variables is to simply remove them from the dataset. This approach will only work well if the columns did not contain useful information.
+
+Score from Approach 1 (Drop Categorical Variables)
+We drop the object columns with the select_dtypes() method.
+
+drop_X_train = X_train.select_dtypes(exclude=['object'])
+drop_X_valid = X_valid.select_dtypes(exclude=['object'])
+
+print("MAE from Approach 1 (Drop categorical variables):")
+print(score_dataset(drop_X_train, drop_X_valid, y_train, y_valid))
+
+
+
+2) Ordinal Encoding
+Ordinal encoding assigns each unique value to a different integer.
+This approach assumes an ordering of the categories: "Never" (0) < "Rarely" (1) < "Most days" (2) < "Every day" (3).
+
+Score from Approach 2 (Ordinal Encoding)
+Scikit-learn has a OrdinalEncoder class that can be used to get ordinal encodings. We loop over the categorical variables and apply the ordinal encoder separately to each column.
+
+from sklearn.preprocessing import OrdinalEncoder
+
+# Get list of categorical variables
+s = (X_train.dtypes == 'object')
+object_cols = list(s[s].index)
+
+print("Categorical variables:")
+print(object_cols)
+
+
+# Make copy to avoid changing original data 
+label_X_train = X_train.copy()
+label_X_valid = X_valid.copy()
+
+# Apply ordinal encoder to each column with categorical data
+ordinal_encoder = OrdinalEncoder()
+label_X_train[object_cols] = ordinal_encoder.fit_transform(X_train[object_cols])
+label_X_valid[object_cols] = ordinal_encoder.transform(X_valid[object_cols])
+
+print("MAE from Approach 2 (Ordinal Encoding):") 
+print(score_dataset(label_X_train, label_X_valid, y_train, y_valid))
+
+
+
+3) One-Hot Encoding
+One-hot encoding creates new columns indicating the presence (or absence) of each possible value in the original data.
+
+
+from sklearn.preprocessing import OneHotEncoder
+
+# Apply one-hot encoder to each column with categorical data
+OH_encoder = OneHotEncoder(handle_unknown='ignore', sparse=False)
+OH_cols_train = pd.DataFrame(OH_encoder.fit_transform(X_train[object_cols]))
+OH_cols_valid = pd.DataFrame(OH_encoder.transform(X_valid[object_cols]))
+
+# One-hot encoding removed index; put it back
+OH_cols_train.index = X_train.index
+OH_cols_valid.index = X_valid.index
+
+# Remove categorical columns (will replace with one-hot encoding)
+num_X_train = X_train.drop(object_cols, axis=1)
+num_X_valid = X_valid.drop(object_cols, axis=1)
+
+# Add one-hot encoded columns to numerical features
+OH_X_train = pd.concat([num_X_train, OH_cols_train], axis=1)
+OH_X_valid = pd.concat([num_X_valid, OH_cols_valid], axis=1)
+
+print("MAE from Approach 3 (One-Hot Encoding):") 
+print(score_dataset(OH_X_train, OH_X_valid, y_train, y_valid))
+
+
+
+############################################################################################
+
+
+Step 1: Define Preprocessing Steps
+Similar to how a pipeline bundles together preprocessing and modeling steps, we use the ColumnTransformer class to bundle together different preprocessing steps. The code below:
+
+imputes missing values in numerical data, and
+imputes missing values and applies a one-hot encoding to categorical data.
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import OneHotEncoder
+
+# Preprocessing for numerical data
+numerical_transformer = SimpleImputer(strategy='constant')
+
+# Preprocessing for categorical data
+categorical_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='most_frequent')),
+    ('onehot', OneHotEncoder(handle_unknown='ignore'))
+])
+
+# Bundle preprocessing for numerical and categorical data
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', numerical_transformer, numerical_cols),
+        ('cat', categorical_transformer, categorical_cols)
+    ])
+Step 2: Define the Model
+Next, we define a random forest model with the familiar RandomForestRegressor class.
+
+from sklearn.ensemble import RandomForestRegressor
+
+model = RandomForestRegressor(n_estimators=100, random_state=0)
+Step 3: Create and Evaluate the Pipeline
+Finally, we use the Pipeline class to define a pipeline that bundles the preprocessing and modeling steps. There are a few important things to notice:
+
+With the pipeline, we preprocess the training data and fit the model in a single line of code. (In contrast, without a pipeline, we have to do imputation, one-hot encoding, and model training in separate steps. This becomes especially messy if we have to deal with both numerical and categorical variables!)
+With the pipeline, we supply the unprocessed features in X_valid to the predict() command, and the pipeline automatically preprocesses the features before generating predictions. (However, without a pipeline, we have to remember to preprocess the validation data before making predictions.)
+from sklearn.metrics import mean_absolute_error
+
+# Bundle preprocessing and modeling code in a pipeline
+my_pipeline = Pipeline(steps=[('preprocessor', preprocessor),
+                              ('model', model)
+                             ])
+
+# Preprocessing of training data, fit model 
+my_pipeline.fit(X_train, y_train)
+
+# Preprocessing of validation data, get predictions
+preds = my_pipeline.predict(X_valid)
+
+# Evaluate the model
+score = mean_absolute_error(y_valid, preds)
+print('MAE:', score)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
